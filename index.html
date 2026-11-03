@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flappy Bird Arcade</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background-color: #222; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; overflow: hidden; color: #fff; }
+        #game-container { position: relative; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border-radius: 8px; overflow: hidden; }
+        canvas { display: block; background: #70c5ce; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
+        .screen { display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.6); width: 100%; height: 100%; pointer-events: auto; }
+        h1 { font-size: 2.5rem; color: #f39c12; margin-bottom: 10px; text-shadow: 2px 2px #000; text-transform: uppercase; }
+        p { font-size: 1.1rem; margin-bottom: 20px; color: #ddd; }
+        button { padding: 12px 28px; font-size: 1.2rem; font-weight: bold; background: #2ecc71; color: white; border: none; border-radius: 25px; cursor: pointer; }
+        #score-display { position: absolute; top: 20px; font-size: 2.5rem; font-weight: bold; text-shadow: 2px 2px #000; z-index: 10; width: 100%; text-align: center; pointer-events: none; }
+        .hide { display: none !important; }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="score-display">0</div>
+        <div id="ui-layer">
+            <div id="start-screen" class="screen">
+                <h1>Flappy Bird</h1>
+                <p>Press Space, Up Arrow, or Click to Fly</p>
+                <button id="start-btn">Start Game</button>
+            </div>
+            <div id="gameover-screen" class="screen hide">
+                <h1>Game Over</h1>
+                <p id="final-score">Score: 0</p>
+                <p id="high-score">High Score: 0</p>
+                <button id="restart-btn">Play Again</button>
+            </div>
+        </div>
+        <canvas id="gameCanvas" width="400" height="500"></canvas>
+    </div>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('start-screen');
+        const gameoverScreen = document.getElementById('gameover-screen');
+        const scoreDisplay = document.getElementById('score-display');
+        const finalScoreTxt = document.getElementById('final-score');
+        const highScoreTxt = document.getElementById('high-score');
+        const startBtn = document.getElementById('start-btn');
+        const restartBtn = document.getElementById('restart-btn');
+
+        let gameState = 'START'; 
+        let score = 0;
+        let highScore = localStorage.getItem('flappy_highscore') || 0;
+        let animationId;
+        const GRAVITY = 0.25;
+        const JUMP = -5.5;
+        const PIPE_SPEED = 2;
+        const PIPE_SPAWN_RATE = 100; 
+        const GAP_HEIGHT = 130;
+        let bird = {};
+        let pipes = [];
+        let frameCount = 0;
+
+        function initGame() {
+            bird = { x: 60, y: canvas.height / 2, radius: 14, velocity: 0, color: '#f1c40f' };
+            pipes = [];
+            score = 0;
+            frameCount = 0;
+            scoreDisplay.innerText = score;
+        }
+
+        function handleJump() {
+            if (gameState === 'PLAYING') bird.velocity = JUMP;
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); handleJump(); }
+        });
+        canvas.addEventListener('mousedown', handleJump);
+        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handleJump(); });
+
+        startBtn.addEventListener('click', () => {
+            startScreen.classList.add('hide');
+            gameState = 'PLAYING';
+            initGame();
+            gameLoop();
+        });
+
+        restartBtn.addEventListener('click', () => {
+            gameoverScreen.classList.add('hide');
+            gameState = 'PLAYING';
+            initGame();
+            gameLoop();
+        });
+
+        function gameLoop() {
+            if (gameState !== 'PLAYING') return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#70c5ce';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            bird.velocity += GRAVITY;
+            bird.y += bird.velocity;
+
+            ctx.fillStyle = bird.color;
+            ctx.beginPath();
+            ctx.arc(bird.x, bird.y, bird.radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            if (bird.y + bird.radius >= canvas.height || bird.y - bird.radius <= 0) {
+                endGame(); return;
+            }
+
+            if (frameCount % PIPE_SPAWN_RATE === 0) {
+                const minHeight = 40;
+                const maxHeight = canvas.height - GAP_HEIGHT - minHeight;
+                const topPipeHeight = Math.floor(Math.random() * (maxHeight - minHeight + 1)) + minHeight;
+                pipes.push({ x: canvas.width, topHeight: topPipeHeight, bottomY: topPipeHeight + GAP_HEIGHT, width: 60, passed: false });
+            }
+
+            for (let i = pipes.length - 1; i >= 0; i--) {
+                let p = pipes[i];
+                p.x -= PIPE_SPEED;
+
+                ctx.fillStyle = '#2ecc71';
+                ctx.fillRect(p.x, 0, p.width, p.topHeight);
+                ctx.strokeRect(p.x, -5, p.width, p.topHeight + 5);
+                ctx.fillRect(p.x, p.bottomY, p.width, canvas.height - p.bottomY);
+                ctx.strokeRect(p.x, p.bottomY, p.width, canvas.height - p.bottomY + 5);
+
+                let closestXTop = Math.max(p.x, Math.min(bird.x, p.x + p.width));
+                let closestYTop = Math.max(0, Math.min(bird.y, p.topHeight));
+                let distTopX = bird.x - closestXTop; let distTopY = bird.y - closestYTop;
+                let distanceTop = Math.sqrt((distTopX * distTopX) + (distTopY * distTopY));
+
+                let closestXBot = Math.max(p.x, Math.min(bird.x, p.x + p.width));
+                let closestYBot = Math.max(p.bottomY, Math.min(bird.y, canvas.height));
+                let distBotX = bird.x - closestXBot; let distBotY = bird.y - closestYBot;
+                let distanceBot = Math.sqrt((distBotX * distBotX) + (distBotY * distBotY));
+
+                if (distanceTop < bird.radius || distanceBot < bird.radius) {
+                    endGame(); return;
+                }
+
+                if (!p.passed && p.x + p.width < bird.x) {
+                    p.passed = true; score++; scoreDisplay.innerText = score;
+                }
+                if (p.x + p.width < 0) pipes.splice(i, 1);
+            }
+            frameCount++;
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        function endGame() {
+            gameState = 'GAMEOVER';
+            cancelAnimationFrame(animationId);
+            if (score > highScore) {
+                highScore = score; localStorage.setItem('flappy_highscore', highScore);
+            }
+            finalScoreTxt.innerText = "Score: " + score;
+            highScoreTxt.innerText = "High Score: " + highScore;
+            gameoverScreen.classList.remove('hide');
+        }
+    </script>
+</body>
+</html>
